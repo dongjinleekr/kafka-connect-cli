@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+
+# Check required binaries: curl
+CURL=$(which curl)
+
+if [[ -z ${CURL} ]]; then
+  echo "curl not installed; exit."
+  exit 1
+fi
+
+ProgName=$(basename $0)
+
+# functions:
+
+# _run
+# _help
+
+# _connector
+# _connector_help
+# _connector_list
+
+# _plugin
+# _plugin_help
+# _plugin_list
+# _plugin_validate
+
+function _run {
+  if [ "${DRY_RUN}" = "1" ]; then
+    echo $1
+  else
+    eval $1
+  fi
+}
+
+function _help {
+  echo "Usage: $ProgName <subcommand> [options]"
+  echo ""
+  echo "Subcommands:"
+  echo ""
+  echo "  connector  connector commands."
+  echo "  plugin     plugin commands."
+  echo ""
+  echo "For help with each subcommand, run:"
+  echo ""
+  echo "  $ProgName <subcommand> -h|--help"
+  echo ""
+  echo "For Rest API documentation, see:"
+  echo ""
+  echo "  https://docs.confluent.io/current/connect/references/restapi.html"
+  echo ""
+}
+
+# connector functions
+
+function _connector {
+  subcommand=$1
+  case $subcommand in
+    "" | "-h" | "--help")
+      _connector_help
+      ;;
+    *)
+      shift
+      _connector_${subcommand} $@
+      if [ $? = 127 ]; then
+        echo "Error: '$subcommand' is not a known subcommand of $ProgName connector." >&2
+        echo "Run '$ProgName subject --help' for a list of known subcommands." >&2
+        return 1
+      fi
+      ;;
+  esac
+}
+
+function _connector_help {
+  echo "Usage: $ProgName connector <subcommand> [options]"
+  echo ""
+  echo "Subcommands:"
+  echo "  list       Get a list of active connectors."
+  echo ""
+}
+
+function _connector_list {
+  _run "curl -s -X GET -H \"Accept: application/json\" -H \"Content-Type: application/json\" http://$KAFKA_CONNECT_URL/connectors"
+}
+
+# plugin functions
+
+function _plugin {
+  subcommand=$1
+  case $subcommand in
+    "" | "-h" | "--help")
+      _plugin_help
+      ;;
+    *)
+      shift
+      _plugin_${subcommand} $@
+      if [ $? = 127 ]; then
+        echo "Error: '$subcommand' is not a known subcommand of $ProgName plugin." >&2
+        echo "Run '$ProgName subject --help' for a list of known subcommands." >&2
+        return 1
+      fi
+      ;;
+  esac
+}
+
+function _plugin_help {
+  echo "Usage: $ProgName plugin <subcommand> [options]"
+  echo ""
+  echo "Subcommands:"
+  echo "  list       Return a list of connector plugins installed in the Kafka Connect cluster."
+  echo "  validate   Validate the provided configuration values against the configuration definition."
+  echo ""
+}
+
+function _plugin_list {
+  _run "curl -s -X GET -H \"Accept: application/json\" -H \"Content-Type: application/json\" http://$KAFKA_CONNECT_URL/connector-plugins"
+}
+
+function _plugin_validate {
+  [[ -z $1 ]] && echo "Usage: $ProgName plugin {plugin} {config}"&& return 1
+  [[ -z $2 ]] && echo "Usage: $ProgName plugin {plugin} {config}"&& return 1
+  
+  _run "curl -s -X PUT -H \"Accept: application/json\" -H \"Content-Type: application/json\" --data $2 http://$KAFKA_CONNECT_URL/connector-plugins/$1/config/validate"
+}
+
+KAFKA_CONNECT_HOST=${KAFKA_CONNECT_HOST:-localhost}
+KAFKA_CONNECT_PORT=${KAFKA_CONNECT_PORT:8083}
+KAFKA_CONNECT_URL=${KAFKA_CONNECT_URL:-${KAFKA_CONNECT_HOST}:${KAFKA_CONNECT_PORT}}
+
+DRY_RUN=${DRY_RUN:0}
+
+subcommand=$1
+case $subcommand in
+  "" | "-h" | "--help")
+    _help
+    ;;
+  *)
+    shift
+    _${subcommand} $@
+    if [ $? = 127 ]; then
+      echo "Error: '$subcommand' is not a known subcommand." >&2
+      echo "Run '$ProgName --help' for a list of known subcommands." >&2
+      exit 1
+    fi
+    ;;
+esac
+
